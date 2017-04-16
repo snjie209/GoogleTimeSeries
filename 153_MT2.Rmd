@@ -113,10 +113,20 @@ plot(firstdiff.52, type = 'l', xlab = "Date", ylab = "Value", main =  "1st Diff 
 acf(q1train.log, lag.max = 300); acf(firstdiff, lag.max = 300); acf(seconddiff, lag.max = 300); acf(firstdiff.52, lag.max = 300)
 
 pacf(q1train.log, lag.max = 300); pacf(firstdiff, lag.max = 300); pacf(seconddiff, lag.max = 300); pacf(firstdiff.52, lag.max = 300)
+
+# Lowest sd usually is the best model
+which.min(sapply(list(q1train.log, firstdiff, seconddiff, firstdiff.52), function(x) print(sd(x)))) # lowest is firstdiff
+
 ```
 
 From the plots above, observe that with the second-order differenced data, there is significantly more higher magnitude of lags than the first-order differenced data. As such, we assume that the second-order differencing over-differences the data due to an increase in the breadth of lags with higher magnitudes, and also the existence of lags with higher than -0.5 magnitudes, not seen in the first-order plot. Also, notice that since the lag-1 acf signal is negative (slightly less than -0.5), we have a non-zero degree MA component to our model. The PACF would have significant evidence of showing an AR signature if its lag-1 component were positive, however this is not the case, and the sporadic nature of the lags tells us that the PACF does not provide enough information. There is also a non-negligible periodicity of high positive magnitude lags in the first-order difference plot, in which we assume that there is a seasonal component to the model. Since the ACF of the first-order differenced data is the one with closest stationarity, a strong lag-1 magnitude in the ACF we guess an $ARIMA(0,1,2)$, $ARIMA(0,1,1)$, $ARIMA(0,0,1)$, $ARIMA(0,1,1)x(0,1,1)_{52}$, $ARIMA(0,1,2)x(0,1,2)_{52}$.
 
+
+### Model Fitting 
+
+Now fit model into data set
+
+- Always fit model into transformed data set.
 
 
 ```{r}
@@ -130,6 +140,123 @@ m7 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 2), p
 
 ```
 
+
+1. **standardized residuals**: 
+
+- want to see: rectangular scatter with no trends
+
+- extreme points around 260, which indicate outliers in the data
+
+- want to see plot that is relatively homoskedastic and don't want to see trends in any of the residuals
+
+2. **acf of residuals**:
+
+- want to see: no significant autocorrelations
+
+- want all of acf to be close to 0 because don't want residuals to be correlated/ want them to be random errors
+
+3. **Ljung-Box p-values**:
+
+- test that checks if a group of autocorrelations is significantl different from 0
+
+- tests as a group, are acf values significantly different from zero, as opposed to others to check if each lag is sig diff from 0
+
+    + H0: data is iid
+    
+    + Ha: data exhibits serial correlation
+    
+    want differences to be close to 0 --> want H0 to be true --> want p-vales > 0.05
+    
+since Ljung-Box is only one where data set are beyond the confidence bands, so there may be a better model to be fit
+
+
+```{r}
+# run diagnostics:
+
+tsdiag(m1) # only one significant value in Ljung Box Statistic
+tsdiag(m2) # nearly all significant from 0 for Ljung
+tsdiag(m3) # way off, ACFs all significant, trend in standardized residuals
+tsdiag(m4) # Ljung has all values near 0
+tsdiag(m5) # all but one Ljung insignificant
+tsdiag(m6) # below zero, near 0 Ljung statistic values
+tsdiag(m7) # teetering above 0 line a bit for Ljung
+
+```
+
+`m2` seems to have the best model of all of them. we try AIC, BIC now
+
+```{r}
+sapply(list(m1,m2,m3,m4,m5,m6,m7), AIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7), AIC))
+
+sapply(list(m1,m2,m3,m4,m5,m6,m7), BIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7), BIC))
+```
+
+Both AIC and BIC point to `m7` to be the best model. This is also the most complex model, so maybe we overfit the data set. We can look at cross valudation to check.
+
+```{r}
+
+computeCVmse <- function(ts, order.totry = c(0L, 0L, 0L), 
+                         seasorder.totry = c(0L, 0L, 0L), d = 52, num.seas = 5){
+  # computes MSE
+  MSE = numeric()
+  len = length(ts)
+  for (k in num.seas:1) {
+    train.dt = ts[1:(len - d*k)]
+    test.dt = ts[(len - d*k + 1):(len - d*(k - 1))] # split into training and test data
+    mod = arima(train.dt, order = order.totry,
+                seasonal = list(order = seasorder.totry, period = d)) # fit model into training data
+    fcst = predict(mod, n.ahead = d) # because we are predicting seasons, so 52 points
+    MSE[k] = mean((exp(fcst$pred) - exp(test.dt))^2) # reverses our previous log transform
+  }
+  return(MSE)
+}
+
+```
+
+The above function runs cross validation and predicts up to `d` points ahead, where `d` is the period of a seasonal ARIMA.
+
+```{r}
+#m1 <- arima(q1train.log, order = c(0, 1, 1)) 
+#m2 <- arima(q1train.log, order = c(0,1,2))
+#m3 <- arima(q1train.log, order = c(0,0,1))
+#m4 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 1), period = 52))
+#m5 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 1), period = 52))
+#m6 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 2), period = 52))
+#m7 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 2), period = 52))
+
+MSE1 <- computeCVmse(q1train.log, c(0,1,1), num.seas = 9)
+MSE2 <- computeCVmse(q1train.log, c(0,1,2), num.seas = 9)
+MSE3 <- computeCVmse(q1train.log, c(0,0,1), num.seas = 9)
+MSE4 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,1), 52, num.seas = 9)
+MSE5 <- computeCVmse(q1train.log, c(0,1,2), c(0,1,1), 52, num.seas = 9)
+MSE6 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,2), 52, num.seas = 9)
+MSE7 <- computeCVmse(q1train.log, c(0,1,2), c(0,1,2), 52, num.seas = 9)
+
+apply(ldply(list(MSE1, MSE2, MSE3,MSE4,MSE5,MSE6,MSE7), print), 2, which.min)
+```
+
+Surprisingly enough, cross-validation by seasons generates that model 6 generates the lowest mean-squared error for the second, third, and fifth 
+
+### Forecasting
+
+```{r}
+predictions <- predict(m6, n.ahead = 104)$pred
+```
+
+need to reverse transformation (take exponential of predicted values)
+
+```{r}
+predictions4 <- exp(predict(m4, n.ahead = 104)$pred)
+predictions6 <- exp(predict(m6, n.ahead = 104)$pred)
+predictions7 <- exp(predict(m7, n.ahead = 104)$pred)
+plotPred <- function(ts, pred) {
+  plot(1:(length(ts) + length(pred)), c(ts, pred), type = 'l', col = 1); points((length(ts) + 1) : (length(ts) + length(pred)), pred, type = 'l', col = 2)
+}
+
+plotPred(exp(q1train.log), predictions4)
+plotPred(exp(q1train.log), predictions6)
+plotPred(exp(q1train.log), predictions7)
+```
 - residuals of plot
 
 - doing adjusted R^2, AIC, BIC, differencing
@@ -146,7 +273,6 @@ plot(Q4Train, type = 'l', xlab = "Date", ylab = "Google Data")
 
 Q4Train.Log <- data.frame(Date = Q4Train$Date, Activity = log(Q4Train$activity + 2))
 plot(Q4Train.Log, type = 'l', xlab = "Date", ylab = "Log Google Data")
-
 q4train.log <- Q4Train.Log$Activity
 
 # Observe first and second differenced log data
@@ -160,7 +286,7 @@ plot(q4seconddiff, type = 'l', xlab = "Date", ylab = "2nd Diff Google Date")
 
 # Observe acf of data of orders 1, 2
 #par(mfrow = c(2,1))
-acf(q4firstdiff, lag.max = 100)
+acf(q4firstdiff, lag.max = 300)
 acf(q4seconddiff, lag.max = 100)
 
 #par(mfrow = c(2,1))
