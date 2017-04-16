@@ -66,40 +66,24 @@ With the shifted log data at hand, we have reduced homoskedasticity extensively.
 
 ```{r}
 q1train.log <- Q1Train.Log$Activity
-#difference <- function(dta, lag.input = 1, order = 1) {
-  # Performs differencing for any degree of regular differencing
-  #time <- dta[,1]; ts <- dta[,2]; 
-  #ts.out <- diff(ts, lag = lag.input, differences = order)
-  #return(data.frame(Date = time[(order + 1):length(time)], Activity = ts.out))
-#}
-
-acfIndex <- function(vec, n.max = 1, mod = NA) {
-  # input : vector of acf values; output : data frame of the top n.max values and their indices
-  stopifnot(n.max <= length(vec));
-  val <- rep(NA, n.max); idx <- rep(NA, n.max)
-  for (i in 1:n.max) {
-    val[i] <- max(vec); idx[i] <- which.max(vec)
-    vec <- vec[-idx[i]]
-  }
-  if (is.na(mod) == FALSE) {
-    mod.vec <- idx %% mod
-    return(data.frame(index = idx, value = val, remainder = mod.vec))
-  }
-  return(data.frame(index = idx, value = val))
-}
-
 
 # Observe first and second differenced log data
 firstdiff <- diff(q1train.log)
 seconddiff <- diff(q1train.log, differences = 2)
 thirddiff <- diff(q1train.log, differences = 3)
 
-checkSeas <- acfIndex(acf(firstdiff, lag.max = 400)$acf, n.max = 20, mod = 52)
-# check if yearly
-# the acfIndex indicates indices and values of the n highest acf values, and found a lot of them are yearly trends. so assume a differencing of 52.
-# seasonal data differencing
-print(checkSeas)
-firstdiff.52 <- diff(firstdiff, lag = 50) 
+# check for seasonality (tbats exponential smoothing)
+checkSeas <- function(dta, freq = 52) {
+  # apply to differenced time series `dta`, with prescribed seasonality frequency of `freq`
+  # checks if series is seasonal based on freq
+  x <- ts(dta, frequency = freq);
+  fit <- tbats(x)
+  return(!is.null(fit$seasonal))
+}
+
+print(checkSeas(firstdiff.52))
+
+firstdiff.52 <- diff(ts(firstdiff, frequency = 52))
 
 
 # Observe differenced data of orders 1,2
@@ -117,11 +101,7 @@ pacf(q1train.log, lag.max = 300); pacf(firstdiff, lag.max = 300); pacf(seconddif
 # Lowest sd usually is the best model
 which.min(sapply(list(q1train.log, firstdiff, seconddiff, firstdiff.52), function(x) print(sd(x)))) # lowest is firstdiff
 
-#tbats exponential smoothing
 
-x <- ts(q1train.log, frequency=52)
-fit <- tbats(x)
-seasonal <- !is.null(fit$seasonal)
 
 ```
 
@@ -182,7 +162,7 @@ since Ljung-Box is only one where data set are beyond the confidence bands, so t
 tsdiag(m1) # only one significant value in Ljung Box Statistic
 tsdiag(m2) # nearly all significant from 0 for Ljung
 tsdiag(m3) # way off, ACFs all significant, trend in standardized residuals
-tsdiag(m4) # Ljung has all values near 0
+tsdiag(m4) # Ljung has all values near 0, but has insignificant acf residuals
 tsdiag(m5) # all but one Ljung insignificant
 tsdiag(m6) # below zero, near 0 Ljung statistic values
 tsdiag(m7) # teetering above 0 line a bit for Ljung
@@ -306,15 +286,19 @@ pacf(q4seconddiff, lag.max = 100)
 ### Creating the Submission File
 
 ```{r}
-writeData <- function(dataset, q.num, firstname, lastname, SID) {
+writeData <- function(dataset, q.num, firstname, lastname, SID, optional = NULL) {
   output <- write.table(dataset,
             sep = ",",
             col.names = FALSE,
             row.names = FALSE,
             file = paste0("Q",q.num,"_",
                           firstname,"_",
-                          lastname,"_",SID))
+                          lastname,"_",SID, optional,".txt"))
   return(output)
 }
+
+writeData(predictions6, q.num = 1, "Samba", "Njie", 23075185,"pred6")
+writeData(predictions7, q.num = 1, "Samba", "Njie", 23075185,"pred7")
+
 ```
 
