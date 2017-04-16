@@ -99,7 +99,7 @@ checkSeas <- acfIndex(acf(firstdiff, lag.max = 400)$acf, n.max = 20, mod = 52)
 # the acfIndex indicates indices and values of the n highest acf values, and found a lot of them are yearly trends. so assume a differencing of 52.
 # seasonal data differencing
 print(checkSeas)
-firstdiff.52 <- diff(firstdiff, lag = 52) 
+firstdiff.52 <- diff(firstdiff, lag = 50) 
 
 
 # Observe differenced data of orders 1,2
@@ -115,11 +115,20 @@ acf(q1train.log, lag.max = 300); acf(firstdiff, lag.max = 300); acf(seconddiff, 
 pacf(q1train.log, lag.max = 300); pacf(firstdiff, lag.max = 300); pacf(seconddiff, lag.max = 300); pacf(firstdiff.52, lag.max = 300)
 ```
 
-From the plots above, observe that with the second-order differenced data, there is significantly more higher magnitude of lags than the first-order differenced data. As such, we assume that the second-order differencing over-differences the data due to an increase in the breadth of lags with higher magnitudes, and also the existence of lags with higher than -0.5 magnitudes, not seen in the first-order plot. Also, notice that since the lag-1 acf signal is negative (slightly less than -0.5), we have a non-zero degree MA component to our model. The PACF would have significant evidence of showing an AR signature if its lag-1 component were positive, however this is not the case. Since the ACF of the first-order differenced data is the one with closest stationarity, a strong lag-1 magnitude in the ACF we guess an $ARIMA(0,1,2)$, $ARIMA(0,1,1)$, $ARIMA(0,0,1)$.
+From the plots above, observe that with the second-order differenced data, there is significantly more higher magnitude of lags than the first-order differenced data. As such, we assume that the second-order differencing over-differences the data due to an increase in the breadth of lags with higher magnitudes, and also the existence of lags with higher than -0.5 magnitudes, not seen in the first-order plot. Also, notice that since the lag-1 acf signal is negative (slightly less than -0.5), we have a non-zero degree MA component to our model. The PACF would have significant evidence of showing an AR signature if its lag-1 component were positive, however this is not the case, and the sporadic nature of the lags tells us that the PACF does not provide enough information. There is also a non-negligible periodicity of high positive magnitude lags in the first-order difference plot, in which we assume that there is a seasonal component to the model. Since the ACF of the first-order differenced data is the one with closest stationarity, a strong lag-1 magnitude in the ACF we guess an $ARIMA(0,1,2)$, $ARIMA(0,1,1)$, $ARIMA(0,0,1)$, $ARIMA(0,1,1)x(0,1,1)_{52}$, $ARIMA(0,1,2)x(0,1,2)_{52}$.
 
 
 
+```{r}
+m1 <- arima(q1train.log, order = c(0, 1, 1)) 
+m2 <- arima(q1train.log, order = c(0,1,2))
+m3 <- arima(q1train.log, order = c(0,0,1))
+m4 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 1), period = 52))
+m5 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 1), period = 52))
+m6 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 2), period = 52))
+m7 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 2), period = 52))
 
+```
 
 - residuals of plot
 
