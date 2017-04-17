@@ -22,6 +22,7 @@ library(tidyr); # for preprocessing
 library(ggplot2); # to generate visualizations
 library(forecast)
 library(tseries)
+library(gtools)
 ```
 
 Establishing working directory:
@@ -62,7 +63,7 @@ plot(Q1Train.Log, type = 'l', xlab = "Date", ylab = "Log Google Data")
 
 ```
 
-With the shifted log data at hand, we have reduced homoskedasticity extensively. Now, we must remove the trend by using differencing, aspiring to achieve a stationary data set.
+With the shifted log data at hand, we have reduced homoscedasticity extensively. Now, we must remove the trend by using differencing, aspiring to achieve a stationary data set.
 
 ```{r}
 q1train.log <- Q1Train.Log$Activity
@@ -123,6 +124,14 @@ m4 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 1), p
 m5 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 1), period = 52))
 m6 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 2), period = 52))
 m7 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 2), period = 52))
+m8 <- arima(q1train.log, order = c(0,2,2), seasonal = list(order = c(0, 1, 2), period = 52))
+m9 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 1, 0), period = 52))
+m10 <- arima(q1train.log, order = c(0,1,1), 
+             seasonal = list(order = c(0, 1, 1), period = 52), method = "CSS-ML")
+m11 <- arima(q1train.log, order = c(0,1,2), seasonal = list(order = c(0, 1, 0), period = 52))
+m12 <- arima(q1train.log, order = c(0,1,1), seasonal = list(order = c(0, 2, 2), period = 52))
+m13 <- arima(q1train.log, order = c(1,1,1), seasonal = list(order = c(1, 1, 1), period = 52))
+m14 <- arima(q1train.log, order = c(2,1,2), seasonal = list(order = c(0,1,2), period = 52))
 
 ```
 
@@ -166,15 +175,20 @@ tsdiag(m4) # Ljung has all values near 0, but has insignificant acf residuals
 tsdiag(m5) # all but one Ljung insignificant
 tsdiag(m6) # below zero, near 0 Ljung statistic values
 tsdiag(m7) # teetering above 0 line a bit for Ljung
-
+tsdiag(m8) # close below 0 for Ljung
+tsdiag(m9)
+tsdiag(m10) # too close to line for Ljung
+tsdiag(m11) # teetering close to 0 pval for Ljung
+tsdiag(m12)
+tsdiag(m13)
 ```
 
 `m2` seems to have the best model of all of them. we try AIC, BIC now
 
 ```{r}
-sapply(list(m1,m2,m3,m4,m5,m6,m7), AIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7), AIC))
+sapply(list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13), AIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13), AIC))
 
-sapply(list(m1,m2,m3,m4,m5,m6,m7), BIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7), BIC))
+sapply(list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13), BIC); which.min(sapply(list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13), BIC))
 ```
 
 Both AIC and BIC point to `m7` to be the best model. This is also the most complex model, so maybe we overfit the data set. We can look at cross valudation to check.
@@ -182,7 +196,7 @@ Both AIC and BIC point to `m7` to be the best model. This is also the most compl
 ```{r}
 
 computeCVmse <- function(ts, order.totry = c(0L, 0L, 0L), 
-                         seasorder.totry = c(0L, 0L, 0L), d = 52, num.seas = 5){
+                         seasorder.totry = c(0L, 0L, 0L), d = 52, num.seas = 5, method = NULL){
   # computes MSE
   MSE = numeric()
   len = length(ts)
@@ -190,7 +204,7 @@ computeCVmse <- function(ts, order.totry = c(0L, 0L, 0L),
     train.dt = ts[1:(len - d*k)]
     test.dt = ts[(len - d*k + 1):(len - d*(k - 1))] # split into training and test data
     mod = arima(train.dt, order = order.totry,
-                seasonal = list(order = seasorder.totry, period = d)) # fit model into training data
+                seasonal = list(order = seasorder.totry, period = d, method = method)) # fit model into training data
     fcst = predict(mod, n.ahead = d) # because we are predicting seasons, so 52 points
     MSE[k] = mean((exp(fcst$pred) - exp(test.dt))^2) # reverses our previous log transform
   }
@@ -217,31 +231,91 @@ MSE4 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,1), 52, num.seas = 9)
 MSE5 <- computeCVmse(q1train.log, c(0,1,2), c(0,1,1), 52, num.seas = 9)
 MSE6 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,2), 52, num.seas = 9)
 MSE7 <- computeCVmse(q1train.log, c(0,1,2), c(0,1,2), 52, num.seas = 9)
+MSE8 <- computeCVmse(q1train.log, c(0,2,2), c(0,1,2), 52, num.seas = 9)
+MSE9 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,0), 52, num.seas = 9)
+MSE10 <- computeCVmse(q1train.log, c(0,1,1), c(0,1,1), 52, num.seas = 9, method = "CSS-ML")
+MSE11 <- computeCVmse(q1train.log, c(0,1,2), c(0,1,0), 52, num.seas = 9)
+MSE12 <- computeCVmse(q1train.log, c(0,1,1), c(0,2,2), 52, num.seas = 8) 
+MSE13 <- computeCVmse(q1train.log, c(0,1,1), c(1,1,1), 52, num.seas = 8, method = "CSS")
 
-apply(ldply(list(MSE1, MSE2, MSE3,MSE4,MSE5,MSE6,MSE7), print), 2, which.min)
+apply(ldply(list(MSE1, MSE2, MSE3,MSE4,MSE5,MSE6,MSE7,MSE8,MSE9, MSE10, MSE11, c(MSE12,100)), print), 2, which.min)
 ```
+
+```{r}
+
+superFit <- function(ts, max.p = 2, max.q = 2, max.P = 2, max.Q = 2, d, D, s) {
+  perm <- permutations(3,2, repeats.allowed = TRUE) - 1 #pairwise permutations of 0,1,2
+  models <- diags <- AICvals <- BICvals <- CVs <- list()
+  dat <- data.frame(NA,NA,NA,NA)
+  for (i in 1:nrow(perm)-1) {
+    for (j in 1:nrow(perm)-1) {
+      dat <- rbind(dat, c(perm[i,],perm[j,]))
+    }
+  }
+  perms <- as.matrix(dat[-1,])
+  
+  dat[dat[,1] <= max.p,]; dat[dat[,3] <= max.P,]; dat[dat[,2] <= max.q,]; dat[dat[,4] <= max.Q,]
+  
+  for (p in 1:nrow(perms)) {
+    models[[p]] <- arima(ts, order = c(perms[p,1],d,perms[p,2]), 
+                      seasonal = list(order = c(perms[p,3], D, perms[p,4]), period = s),
+                      method = "CSS")
+    names(models)[[p]] <- paste0(perm[i,1],".",d,".", perm[i,2],".", 
+                                 perm[j,1],".",D,".", perm[j,2], "_", s)
+    diags[[p]] <- tsdiag(models[[p]])
+    AICvals[[p]] <- AIC(models[[p]]); BICvals[[p]] <- BIC(models[[p]])
+    CVs[[p]] <- computeCVmse(ts, c(perms[p,1],d,perms[p,2]), c(perms[p,3],D, perms[p,4]), s, num.seas = 5, method = "CSS")
+  }
+  AICmin <- min(unlist(AICvals)); BICmin <- min(unlist(BICvals))
+  names(AICmin) <- names(models[[which.min(unlist(AICvals))]]); names(BICmin) <- names(models[[which.min(unlist(BICvals))]])
+  CV <- sapply(apply(ldply(CVs, function(x) x), 2, which.min), function(y) names(models)[[y]])
+  AIC <- list(AICvals, AICmin); BIC <- list(BICvals, BICmin)
+  
+  return(list(models, diags, AIC, BIC, CV))
+}
+
+superFit(q1train.log, d = 1, D = 1, s = 52, max.p = 0, max.P = 0, max.Q = 1)
+
+
+```
+
+
 
 Surprisingly enough, cross-validation by seasons generates that model 6 generates the lowest mean-squared error for the second, third, and fifth 
 
 ### Forecasting
 
-```{r}
-predictions <- predict(m6, n.ahead = 104)$pred
-```
-
 need to reverse transformation (take exponential of predicted values)
 
 ```{r}
-predictions4 <- exp(predict(m4, n.ahead = 104)$pred)
-predictions6 <- exp(predict(m6, n.ahead = 104)$pred)
-predictions7 <- exp(predict(m7, n.ahead = 104)$pred)
+predictions4 <- exp(predict(m4, n.ahead = 104)$pred) - 2
+predictions6 <- exp(predict(m6, n.ahead = 104)$pred) - 2
+predictions7 <- exp(predict(m7, n.ahead = 104)$pred) - 2
+predictions8 <- exp(predict(m8, n.ahead = 104)$pred) - 2
+predictions5 <- exp(predict(m5, n.ahead = 104)$pred) - 2
+predictions9 <- exp(predict(m9, n.ahead = 104)$pred) - 2
+predictions10 <- exp(predict(m10, n.ahead = 104)$pred) - 2
+predictions2 <- exp(predict(m2, n.ahead = 104)$pred) - 2
+predictions11 <- exp(predict(m11, n.ahead = 104)$pred) - 2
+predictions12 <- exp(predict(m12, n.ahead = 104)$pred) - 2
+predictions13 <- exp(predict(m13, n.ahead = 104)$pred) - 2
+
+
 plotPred <- function(ts, pred) {
   plot(1:(length(ts) + length(pred)), c(ts, pred), type = 'l', col = 1); points((length(ts) + 1) : (length(ts) + length(pred)), pred, type = 'l', col = 2)
 }
 
-plotPred(exp(q1train.log), predictions4)
-plotPred(exp(q1train.log), predictions6)
-plotPred(exp(q1train.log), predictions7)
+plotPred(exp(q1train.log) - 2, predictions4)
+plotPred(exp(q1train.log) - 2, predictions6)
+plotPred(exp(q1train.log) - 2, predictions7)
+plotPred(exp(q1train.log) - 2, predictions8)
+plotPred(exp(q1train.log) - 2, predictions5)
+plotPred(exp(q1train.log) - 2, predictions9)
+plotPred(exp(q1train.log) - 2, predictions10)
+plotPred(exp(q1train.log) - 2, predictions2)
+plotPred(exp(q1train.log) - 2, predictions11)
+plotPred(exp(q1train.log) - 2, predictions12)
+plotPred(exp(q1train.log) - 2, predictions13)
 ```
 - residuals of plot
 
@@ -249,56 +323,80 @@ plotPred(exp(q1train.log), predictions7)
 
 - polynomial, exponential fit
 
+## Question 5
 
-##Question 4
-
+###Exploratory Data Analysis
 ```{r}
-Q4Train <- data$Q4Train
+Q5Train <- data$Q5Train
 
-plot(Q4Train, type = 'l', xlab = "Date", ylab = "Google Data")
+plot(Q5Train, type = 'l', xlab = "Date", ylab = "Google Data")
 
-Q4Train.Log <- data.frame(Date = Q4Train$Date, Activity = log(Q4Train$activity + 2))
-plot(Q4Train.Log, type = 'l', xlab = "Date", ylab = "Log Google Data")
-q4train.log <- Q4Train.Log$Activity
+# log transform increases variance so we will not perform log transform
+q5train <- Q5Train$activity
 
-# Observe first and second differenced log data
-q4firstdiff <- diff(q4train.log)
-q4seconddiff <- diff(diff(q4train.log))
+q5diff1 <- diff(q5train, differences = 1)
+q5diff2 <- diff(q5train, differences = 2)
+q5diff3 <- diff(q5train, differences = 3)
+
+print(checkSeas(q5diff1))
+
+q5diff1.52 <- diff(ts(q5diff1, frequency = 52), differences = 1)
+q5diff2.52 <- diff(ts(q5diff2, frequency = 52), differences = 1)
+q5diff3.52 <- diff(ts(q5diff3, frequency = 52), differences)
+
+
 
 # Observe differenced data of orders 1,2
-plot(q4firstdiff, type = 'l', xlab = "Date", ylab = "1st Diff Google Date");
-plot(q4seconddiff, type = 'l', xlab = "Date", ylab = "2nd Diff Google Date")
-
-
+#par(mfrow = c(2,1))
+plot(q5train, type = 'l', xlab = "Time", ylab = "Value", main = "Undifferenced Google Data")
+plot(q5diff1, type = 'l', xlab = "Time", ylab = "Value", main =  "1st Diff Google Data");
+plot(q5diff2, type = 'l', xlab = "Time", ylab = "Value", main =  "2nd Diff Google Data")
+plot(q5diff1.52, type = 'l', xlab = "Time", ylab = "Value", main =  "1st Diff and 1st Seasonal Diff Google Data")
+plot(q5diff2.52, type = 'l', xlab = "Time", ylab = "Value", main = "2nd Diff and 1st Seasonal Diff Data")
 # Observe acf of data of orders 1, 2
-#par(mfrow = c(2,1))
-acf(q4firstdiff, lag.max = 300)
-acf(q4seconddiff, lag.max = 100)
+acf(q5train, lag.max = 300); acf(q5diff1, lag.max = 300); acf(q5diff2, lag.max = 300); acf(q5diff1.52, lag.max = 300); acf(q5diff2.52, lag.max = 300); 
 
-#par(mfrow = c(2,1))
-pacf(q4firstdiff, lag.max = 100)
-pacf(q4seconddiff, lag.max = 100)
+pacf(q5train.log, lag.max = 300); pacf(q5diff1, lag.max = 300); pacf(q5diff2, lag.max = 300); pacf(q5diff1.52, lag.max = 300)
+
+# Lowest sd usually is the best model
+which.min(sapply(list(q5train.log, q5diff1, q5diff2, q5diff1.52), function(x) print(sd(x)))) # lowest is firstdiff
+
+
+
+
 ```
 
+###Model Fitting
 
+###Predictions
 
 
 ### Creating the Submission File
 
 ```{r}
-writeData <- function(dataset, q.num, firstname, lastname, SID, optional = NULL) {
+writeData <- function(dataset, q.num, firstname, lastname, SID) {
   output <- write.table(dataset,
             sep = ",",
             col.names = FALSE,
             row.names = FALSE,
             file = paste0("Q",q.num,"_",
                           firstname,"_",
-                          lastname,"_",SID, optional,".txt"))
+                          lastname,"_",SID, ".txt"))
   return(output)
 }
 
-writeData(predictions6, q.num = 1, "Samba", "Njie", 23075185,"pred6")
-writeData(predictions7, q.num = 1, "Samba", "Njie", 23075185,"pred7")
+writeData(predictions6, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.664918
+writeData(predictions7, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.73323
+writeData(predictions4, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.148023
+writeData(predictions8, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 4.235679
+writeData(predictions5, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.389775
+writeData(predictions9, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 4.27031
+writeData(predictions10, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.148023
+writeData(predictions2, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 4.721428
+writeData(predictions11, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 4.430661
+writeData(predictions12, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 5.31 
+writeData(predictions13, q.num = 1, "Samba", "Njie", 23075185) # test MSE = 3.683192 
+writeData(predictions, q.num = 1, "Cindy", "Kang", 00000000) # test MSE = 3.683192 
 
 ```
 

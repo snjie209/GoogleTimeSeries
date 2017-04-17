@@ -19,7 +19,7 @@ dataList <- matrix(unlist(lapply(dtasets,
 # dummy entries for now
 set.seed(0)
 true_process = dataList #matrix(rnorm(104 * 5), 104, 5)
-flist = 'Q1_Samba_Njie_23075185.txt' #'Q1_Alex_DAmour_123456.txt' 
+flist = 'Q1_Cindy_Kang_0.txt' #'Q1_Samba_Njie_23075185.txt' #'Q1_Alex_DAmour_123456.txt' 
 
 # th function extract_sub() would process one student submission, identified by its file name
 # it returns a list containing
